@@ -32,7 +32,7 @@ import {
 import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { promises as fs, readFileSync } from "node:fs";
+import { existsSync, promises as fs, readFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,6 +120,7 @@ import {
   revokeCursorSessionMcpServer,
   type CursorMcpApproval,
 } from "./cursor-mcp-approval.js";
+import { resolveMcpServerBridgeArgs } from "./mcp-server-args.js";
 import {
   ACP_NATIVE_REASONING_EFFORTS,
   buildAgentModelCatalog,
@@ -300,7 +301,12 @@ function emitSessionError(session: AcpThreadSession, message: string): void {
 }
 
 function resolveBridgeProcessArgsForMcpServer(): string[] {
-  return [...process.execArgv, fileURLToPath(import.meta.url), "--mcp-stdio"];
+  const modulePath = fileURLToPath(import.meta.url);
+  return resolveMcpServerBridgeArgs({
+    execArgv: process.execArgv,
+    modulePath,
+    moduleExists: existsSync(modulePath),
+  });
 }
 
 function resolveBridgeProcessEnvForMcpServer(): AcpMcpServerConfig["env"] {

@@ -6,6 +6,7 @@ import {
   readdir,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +15,7 @@ import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PLUGIN_HOST_ARTIFACT_MAX_AGE_MS } from "./plugin-host-artifact-cache.js";
 import { PluginHostManager } from "./plugin-host-manager.js";
 
 type PluginCall = Extract<
@@ -282,7 +284,7 @@ describe("PluginHostManager", () => {
     await firstByteCall;
   });
 
-  it("keeps only the active artifact digest in each plugin cache", async () => {
+  it("keeps recently used artifact digests and prunes only expired ones", async () => {
     const versionedArtifact = (index: number): Buffer =>
       Buffer.concat([artifactSource, Buffer.from(`\n// version ${index}\n`)]);
     const sources = [
@@ -316,10 +318,30 @@ describe("PluginHostManager", () => {
       );
     }
 
-    const latestDigest = createHash("sha256").update(sources[2]).digest("hex");
-    await expect(
-      readdir(join(dataDir, "plugin-host-artifacts", "fixture")),
-    ).resolves.toEqual([latestDigest]);
+    const digests = sources.map((source) =>
+      createHash("sha256").update(source).digest("hex"),
+    );
+    const cacheDir = join(dataDir, "plugin-host-artifacts", "fixture");
+    await expect(readdir(cacheDir)).resolves.toEqual(
+      expect.arrayContaining(digests),
+    );
+
+    const expired = new Date(
+      Date.now() - PLUGIN_HOST_ARTIFACT_MAX_AGE_MS - 60_000,
+    );
+    await utimes(join(cacheDir, digests[0]), expired, expired);
+    await utimes(join(cacheDir, digests[1]), expired, expired);
+    await manager.call(
+      callCommand({
+        generation: "generation-4",
+        artifact: {
+          digest: digests[2],
+          byteLength: sources[2].byteLength,
+        },
+      }),
+    );
+
+    await expect(readdir(cacheDir)).resolves.toEqual([digests[2]]);
   });
 
   it("evicts an idle worker and starts it again without reporting a crash", async () => {

@@ -7,6 +7,8 @@ const PLUGIN_HOST_ARTIFACT_CACHE_SEGMENT = "plugin-host-artifacts";
 const ARTIFACT_FILE_NAME = "host.mjs";
 const LEGACY_ARTIFACT_FILE_NAMES = ["host.js"] as const;
 
+export const PLUGIN_HOST_ARTIFACT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 export type FetchPluginHostArtifact = (args: {
   pluginId: string;
   digest: string;
@@ -37,7 +39,10 @@ export async function ensureCachedPluginHostArtifact(args: {
         digest,
         expectedByteLength: byteLength,
       }),
-    prune: { kind: "keep-only-current" },
+    prune: {
+      kind: "keep-recently-used",
+      maxAgeMs: PLUGIN_HOST_ARTIFACT_MAX_AGE_MS,
+    },
     logger: args.logger,
   });
 }
